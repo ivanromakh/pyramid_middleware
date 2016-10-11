@@ -1,19 +1,14 @@
-from paste.httpserver import serve
 from wsgiref.simple_server import make_server
 from pyramid.response import Response
+from pyramid.request import Request
 from pyramid.view import view_config
 from couchdb.http import ResourceConflict
-from webob import Request, Response
 from io import BytesIO
 import socket
 import itertools
 import traceback
-
-try:
-    from couchdb.http import ResourceConflict
-except ImportError:
-    class ResourceConflict(Exception):
-        pass
+from pyramid.events import NewRequest
+from pyramid.events import subscriber
 
 class Retry:
     def __init__(self, app, tries, retryable=ResourceConflict,  highwater=2<<20,
@@ -97,20 +92,43 @@ def close_when_done_generator(written, app_iter):
         if hasattr(app_iter, 'close'):
             app_iter.close()
 
+def test3(request):
+    return Response("test3", "409 Conflict")
 
+def test2(request):
+    if request.registry.count2 > 0:
+        request.registry.count2 -= 1
+        return Response("test1", "409 Conflict")
+    return Response("test2", "200 OK")
 
-@view_config()
-def hello(request):
-    return Response("blabla", "409 Conflict")
+def test1(request):
+    if request.registry.count1 > 0:
+        request.registry.count1 -= 1
+        return Response("test1", "409 Conflict")
+    return Response("hello", "200 OK")
+
+@subscriber(NewRequest)
+def mysubscriber(event):
+    event.request.foo = 1
 
 if __name__ == '__main__':
     from pyramid.config import Configurator
     config = Configurator()
-    config.add_route('hello', '/hello/{name}')
-    config.add_view(hello, route_name='hello')
-    config.scan()
-    app = config.make_wsgi_app()
+    
+    config.registry.count1 = 1
+    config.registry.count2 = 2
+    config.add_route('test3', '/test3')
+    config.add_view(test3, route_name='test3')
 
+    config.add_route('test2', '/test2')
+    config.add_view(test2, route_name='test2')
+
+    config.add_route('test1', '/test1',)
+    config.add_view(test1, route_name='test1')
+
+    config.scan()
+
+    app = config.make_wsgi_app()
     # Put middleware
     app = Retry(app,3, ResourceConflict)
     server = make_server('0.0.0.0', 8080, app)
