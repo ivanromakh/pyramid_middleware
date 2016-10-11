@@ -1,19 +1,11 @@
-from paste.httpserver import serve
 from wsgiref.simple_server import make_server
 from pyramid.response import Response
 from pyramid.view import view_config
 from couchdb.http import ResourceConflict
-from webob import Request, Response
 from io import BytesIO
 import socket
 import itertools
 import traceback
-
-try:
-    from couchdb.http import ResourceConflict
-except ImportError:
-    class ResourceConflict(Exception):
-        pass
 
 class Retry:
     def __init__(self, app, tries, retryable=ResourceConflict,  highwater=2<<20,
@@ -98,16 +90,46 @@ def close_when_done_generator(written, app_iter):
             app_iter.close()
 
 
+class Model():
+    i = 1
+    def __init__(self, i):
+        self.i = i
+    def __call__(self):
+        self.i -= 1
 
-@view_config()
-def hello(request):
-    return Response("blabla", "409 Conflict")
+count1 = Model(1)
+count2 = Model(2)
+
+
+def test3(request):
+    return Response("test3", "409 Conflict")
+
+def test2(request):
+    count2()
+    if count2.i >=0:
+        return Response("test2", "409 Conflict")
+    return Response("test2", "200 OK")
+
+def test1(request):
+    count1()
+    if count1.i >=0:
+        return Response("test1", "409 Conflict")
+    return Response("test1", "200 OK")
 
 if __name__ == '__main__':
     from pyramid.config import Configurator
     config = Configurator()
-    config.add_route('hello', '/hello/{name}')
-    config.add_view(hello, route_name='hello')
+    
+    config.add_route('test3', '/test3')
+    config.add_view(test3, route_name='test3')
+    
+    config.add_route('test2', '/test2')
+    config.add_view(test2, route_name='test2')
+    
+    config.add_route('test1', '/test1')
+    config.add_view(test1, route_name='test1')
+
+    
     config.scan()
     app = config.make_wsgi_app()
 
