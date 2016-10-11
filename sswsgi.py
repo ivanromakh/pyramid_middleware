@@ -7,6 +7,7 @@ from webob import Request, Response
 from io import BytesIO
 import socket
 import itertools
+import traceback
 
 try:
     from couchdb.http import ResourceConflict
@@ -73,31 +74,20 @@ class Retry:
 
         i = 0
         while 1:
-            try:
-                app_iter = self.app(environ, replace_start_response)
-            except self.retryable as e:
+            app_iter = self.app(environ, replace_start_response)
+            print catch_response
+            if catch_response[0] == "409 Conflict":
                 i += 1
-                errors = environ.get('wsgi.errors')
-                if errors is not None and i >= self.log_after_try_count:
-                    errors.write('repoze.retry retrying, count = %s\n' % i)
-                    traceback.print_exc(None, errors)
-                if i < self.tries:
-                    if new_wsgi_input is not None:
-                        new_wsgi_input.seek(0)
-                    catch_response[:] = []
+                if i< self.tries:
                     continue
-                if catch_response:
-                    start_response(*catch_response)
-                raise
+            if catch_response:
+                start_response(*catch_response)
             else:
-                if catch_response:
-                    start_response(*catch_response)
-                else:
-                    if hasattr(app_iter, 'close'):
-                        app_iter.close()
-                    raise AssertionError('app must call start_response before '
+                if hasattr(app_iter, 'close'):
+                    app_iter.close()
+                raise AssertionError('app must call start_response before '
                                          'returning')
-                return close_when_done_generator(written, app_iter)
+            return close_when_done_generator(written, app_iter)
 
 def close_when_done_generator(written, app_iter):
     try:
@@ -108,10 +98,10 @@ def close_when_done_generator(written, app_iter):
             app_iter.close()
 
 
+
 @view_config()
 def hello(request):
-    
-    return Response("dfdf")
+    return Response("blabla", "409 Conflict")
 
 if __name__ == '__main__':
     from pyramid.config import Configurator
